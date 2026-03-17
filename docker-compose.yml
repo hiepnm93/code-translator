@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  nllb-api:
+    build:
+      context: ./nllb-api
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    volumes:
+      - model-cache:/app/model-cache
+    environment:
+      - HF_HOME=/app/model-cache
+    restart: unless-stopped
+
+volumes:
+  model-cache:
