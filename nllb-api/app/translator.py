@@ -1,6 +1,7 @@
 """NLLB model wrapper — load and translate."""
 import logging
 from typing import List
+import torch
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 logger = logging.getLogger(__name__)
@@ -10,17 +11,19 @@ class NLLBTranslator:
     def __init__(self):
         self.model = None
         self.tokenizer = None
+        # Use the GPU when available (huge speedup); fall back to CPU otherwise.
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     def load(self):
-        logger.info(f"Loading model: {MODEL_NAME}")
+        logger.info(f"Loading model: {MODEL_NAME} on device={self.device}")
         self.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME).to(self.device)
         self.model.eval()
-        logger.info("Model loaded successfully")
+        logger.info(f"Model loaded successfully on {self.device}")
 
     def translate(self, text: str, source: str, target: str) -> str:
         self.tokenizer.src_lang = source
-        inputs = self.tokenizer(text, return_tensors="pt", padding=True, truncation=True)
+        inputs = self.tokenizer(text, return_tensors="pt", padding=True, truncation=True).to(self.device)
         target_lang_id = self.tokenizer.convert_tokens_to_ids(target)
         generated = self.model.generate(**inputs, forced_bos_token_id=target_lang_id, max_new_tokens=256)
         result = self.tokenizer.batch_decode(generated, skip_special_tokens=True)
@@ -30,7 +33,7 @@ class NLLBTranslator:
         if not texts:
             return []
         self.tokenizer.src_lang = source
-        inputs = self.tokenizer(texts, return_tensors="pt", padding=True, truncation=True)
+        inputs = self.tokenizer(texts, return_tensors="pt", padding=True, truncation=True).to(self.device)
         target_lang_id = self.tokenizer.convert_tokens_to_ids(target)
         generated = self.model.generate(**inputs, forced_bos_token_id=target_lang_id, max_new_tokens=256)
         return self.tokenizer.batch_decode(generated, skip_special_tokens=True)
