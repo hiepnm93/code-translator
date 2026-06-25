@@ -1,8 +1,9 @@
 """FastAPI server for NLLB Translation API."""
 import logging
+import os
 from contextlib import asynccontextmanager
-from typing import List
-from fastapi import FastAPI, HTTPException
+from typing import List, Optional
+from fastapi import FastAPI, HTTPException, Header, Depends
 from app.models import (TranslateRequest, TranslateResponse, BatchTranslateRequest, BatchTranslateResponse, DetectRequest, DetectResponse, LanguageInfo)
 from app.translator import translator
 
@@ -11,12 +12,35 @@ logger = logging.getLogger(__name__)
 MAX_BATCH_SIZE = 64
 MAX_REQUEST_BODY_KB = 10
 
+# Optional bearer-token auth. When API_TOKEN is set, every request must send
+# `Authorization: Bearer <token>` (or `X-API-Token: <token>`). Unset → open.
+API_TOKEN = os.getenv("API_TOKEN")
+
+
+async def require_token(
+    authorization: Optional[str] = Header(default=None),
+    x_api_token: Optional[str] = Header(default=None),
+):
+    if not API_TOKEN:
+        return
+    presented = x_api_token
+    if not presented and authorization and authorization.lower().startswith("bearer "):
+        presented = authorization[7:]
+    if presented != API_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid or missing API token")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     translator.load()
     yield
 
-app = FastAPI(title="NLLB Translation API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="NLLB Translation API",
+    version="1.0.0",
+    lifespan=lifespan,
+    dependencies=[Depends(require_token)],
+)
 
 @app.post("/translate", response_model=TranslateResponse)
 async def translate(req: TranslateRequest):
